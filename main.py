@@ -138,10 +138,7 @@ FAQ_DATA = {
     },
     "terms": {
         "title": "📜 NEXUS利用規約",
-        "description": (
-            "NEXUSの利用規約は `/terms` コマンド、またはWebページ"
-            "https://health-bot-5ki5.onrender.com/termsから確認できます。"
-        ),
+        "description":"NEXUSの利用規約は `/terms` コマンド、またはWebページhttps://health-bot-5ki5.onrender.com/termsから確認できます。",
     },
 }
 
