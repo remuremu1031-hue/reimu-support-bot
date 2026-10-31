@@ -6,7 +6,7 @@
   - ① デイリー健康レポート  ② ピリつき(メッセージバースト)検知
   - ③ 新規メンバー危険度レーティング  ④ ステータス連動
   - 📡 稼働ステータスパネル (/set-status-channel)
-  - 🔑 ライセンス管理 (/activate-license, /check-license)
+  - 🔑 ライセンス管理 (/activate-license, /check-license, 運営用: /license-issue /license-revoke /license-restore)
   - 📢 ブロードキャスト (/set-broadcast-channel, /broadcast, /broadcast-info)
   - 📜 利用規約 (/terms コマンド, Web: /terms)
   - 🛡️ セキュリティ強化 (レート制限 / 権限ガード / 入力検証 / 監査ログ)
@@ -1335,6 +1335,44 @@ async def license_restore(
     reason: app_commands.Range[str, 0, 200] = "",
 ) -> None:
     await _license_admin_action(interaction, key, reason, revoke=False)
+
+
+@bot.tree.command(name="license-issue", description="【運営専用】新しいライセンスキーを発行します")
+@app_commands.describe(days="有効日数（省略すると無期限）", owner="発行先のユーザー（省略すると自分）")
+@guard("operator", limit=5, window=60)
+async def license_issue(
+    interaction: discord.Interaction,
+    days: Optional[app_commands.Range[int, 1, 3650]] = None,
+    owner: Optional[discord.User] = None,
+) -> None:
+    await interaction.response.defer(ephemeral=True)  # キーは実行者だけに表示
+    owner_id = (owner or interaction.user).id
+    try:
+        key = await licenses.issue(owner_id, days)
+    except LicenseBackendError:
+        await interaction.followup.send("❌ 発行に失敗しました（Redisに接続できません）。", ephemeral=True)
+        await audit.record(
+            "ライセンス発行（失敗）", severity="warn", guild=interaction.guild, actor=interaction.user
+        )
+        return
+    try:
+        info = await licenses.inspect(key)
+        expires_at = info.expires_at if info else 0
+    except LicenseBackendError:
+        expires_at = int(time.time()) + days * 86400 if days else 0
+    e = discord.Embed(title="🔑 ライセンスを発行しました", color=0x2ECC71, timestamp=discord.utils.utcnow())
+    e.add_field(name="ライセンスキー", value=f"`{key}`", inline=False)
+    e.add_field(name="有効期限", value=license_expiry_text(expires_at), inline=True)
+    e.add_field(name="発行先", value=f"<@{owner_id}>", inline=True)
+    e.set_footer(text="このキーはこの画面にしか表示されません。必ず控えてください。")
+    await interaction.followup.send(embed=e, ephemeral=True)
+    await audit.record(  # 監査ログにはキーを伏せ字でのみ記録する
+        "ライセンス発行",
+        severity="success",
+        guild=interaction.guild,
+        actor=interaction.user,
+        details={"キー": mask_key(key), "発行先": str(owner_id), "有効期限": f"{days}日" if days else "無期限"},
+    )
 
 
 # ════════════════════════════════════════════════════════════
